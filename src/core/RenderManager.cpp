@@ -349,6 +349,31 @@ void RenderManager::ResolveDepthBuffer(IDirect3DTexture9* Buffer) {
 		if (pCurrVX) pCurrVX->Release();
 	}
 	else {
+		// PipBoyFix: the game can switch depth-stencil surfaces (e.g. Pip-Boy with real-time menu mods).
+		// The surface used to be fetched once and cached forever, so NVR could keep copying a stale depth
+		// buffer that still held the Pip-Boy. Re-check the bound surface every time and re-register on change.
+		{
+			IDirect3DSurface9* CurrentDepth = NULL;
+			device->GetDepthStencilSurface(&CurrentDepth);
+			if (CurrentDepth && TheTextureManager->DepthSurface && CurrentDepth != TheTextureManager->DepthSurface) {
+				D3DSURFACE_DESC OldDesc, NewDesc;
+				TheTextureManager->DepthSurface->GetDesc(&OldDesc);
+				CurrentDepth->GetDesc(&NewDesc);
+				static int changeLogs = 0;
+				if (changeLogs < 50) {
+					Logger::Log("[PipBoyFix] depth surface changed %p (%ux%u fmt %08X) -> %p (%ux%u fmt %08X)", TheTextureManager->DepthSurface, OldDesc.Width, OldDesc.Height, OldDesc.Format, CurrentDepth, NewDesc.Width, NewDesc.Height, NewDesc.Format);
+					changeLogs++;
+				}
+				// only follow surfaces that match the screen size, other ones are offscreen targets
+				if (NewDesc.Width == OldDesc.Width && NewDesc.Height == OldDesc.Height) {
+					TheTextureManager->DepthSurface->Release();
+					TheTextureManager->DepthSurface = NULL;
+					TheTextureManager->DepthTextureINTZ = NULL;
+				}
+			}
+			if (CurrentDepth) CurrentDepth->Release();
+		}
+
 		if (!TheTextureManager->DepthSurface) {
 			device->GetDepthStencilSurface(&TheTextureManager->DepthSurface);
             D3DSURFACE_DESC desc;
