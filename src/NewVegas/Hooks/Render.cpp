@@ -87,7 +87,11 @@ void __fastcall RenderWorldSceneGraphHook(Main* This, UInt32 edx, Sun* SkySun, U
 		traceFrames--;
 	}
 
-	if (!bPipBoyOpen || bPipBoyLive) {
+	// PipBoyFix: with real-time menus (e.g. co-op mods) the Pip-Boy counts as "live", and the game draws it
+	// as part of the world pass (IsFirstPerson == 0). Never copy that pass into the world depth buffer while
+	// the Pip-Boy is open, or it gets baked into the depth/normals used by shadows, AO and volumetric fog.
+	const bool bPipBoyInWorldPass = bPipBoyOpen && !IsFirstPerson;
+	if ((!bPipBoyOpen || bPipBoyLive) && !bPipBoyInWorldPass) {
 		TheRenderManager->ResolveDepthBuffer(TheTextureManager->DepthTexture); // disable updating the world buffer when pipboy is out
 		TheRenderManager->WorldDepthFrame = TheRenderManager->FrameCounter;
 	}
