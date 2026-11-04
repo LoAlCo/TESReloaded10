@@ -1,5 +1,6 @@
 float4 TESR_DepthConstants;
 float4 TESR_CameraData;
+float4 TESR_DepthValidity; // PipBoyFix: x = world fresh, y = view model fresh
 
 float4x4 TESR_InvProjectionTransform;
 
@@ -50,7 +51,7 @@ float4 CombineDepth(VSOUT IN) : COLOR0 {
     float viewModelViewZ = ToVS(viewModelDepth, viewModelNearZ, farZ);
 	
     float combinedViewZ = worldViewZ;
-    if (viewModelDepth > 0.0)
+    if (viewModelDepth > 0.0 && TESR_DepthValidity.y > 0.5) // PipBoyFix: ignore a stale view model snapshot
         combinedViewZ = viewModelViewZ;
 
     return float4(combinedViewZ / farZ, ToPS(combinedViewZ, nearZ, farZ), 1.0, 1.0);

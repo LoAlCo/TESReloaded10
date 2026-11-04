@@ -74,13 +74,29 @@ void __fastcall RenderWorldSceneGraphHook(Main* This, UInt32 edx, Sun* SkySun, U
 	const bool bPipBoyOpen = InterfaceManager->IsPipBoyOpen();
 	const bool bPipBoyLive = (TheGameMenuManager->IsLiveMenu && TheGameMenuManager->IsLiveMenu(Menu::kMenuType_BigFour, false, false) == GameMenuManager::MenuPauseState::MENU_LIVE);
 
-	if (!bPipBoyOpen || bPipBoyLive)
+	// PipBoyFix: log every Pip-Boy state change, then the next 120 frames, to see which buffers update when
+	static bool lastOpen = false, lastLive = false;
+	static int traceFrames = 0;
+	if (bPipBoyOpen != lastOpen || bPipBoyLive != lastLive) {
+		Logger::Log("[PipBoyFix] pipboy state change: open %i -> %i, live %i -> %i (frame %u)", (int)lastOpen, (int)bPipBoyOpen, (int)lastLive, (int)bPipBoyLive, TheRenderManager->FrameCounter);
+		traceFrames = 120;
+	}
+	lastOpen = bPipBoyOpen; lastLive = bPipBoyLive;
+	if (traceFrames > 0) {
+		Logger::Log("[PipBoyFix] frame %u WorldSceneGraph: firstPerson %i open %i live %i worldResolve %i", TheRenderManager->FrameCounter, (int)IsFirstPerson, (int)bPipBoyOpen, (int)bPipBoyLive, (int)(!bPipBoyOpen || bPipBoyLive));
+		traceFrames--;
+	}
+
+	if (!bPipBoyOpen || bPipBoyLive) {
 		TheRenderManager->ResolveDepthBuffer(TheTextureManager->DepthTexture); // disable updating the world buffer when pipboy is out
+		TheRenderManager->WorldDepthFrame = TheRenderManager->FrameCounter;
+	}
 
 	if (!IsFirstPerson) {
 		// clear the viewmodel depth buffer
 		TheRenderManager->Clear(NULL, NiRenderer::kClear_ZBUFFER);
 		TheRenderManager->ResolveDepthBuffer(TheTextureManager->DepthTextureViewModel);
+		TheRenderManager->ViewModelDepthFrame = TheRenderManager->FrameCounter;
 	}
 }
 
@@ -91,6 +107,7 @@ void __fastcall RenderFirstPersonHook(Main* This, UInt32 edx, NiDX9Renderer* Ren
 	//ThisCall(0x00874C10, Global);
 	(*RenderFirstPerson)(This, Renderer, Geo, SkySun, RenderedTexture);
 	TheRenderManager->ResolveDepthBuffer(TheTextureManager->DepthTextureViewModel);
+	TheRenderManager->ViewModelDepthFrame = TheRenderManager->FrameCounter;
 }
 
 void (__thiscall* RenderReflections)(WaterManager*, NiCamera*, ShadowSceneNode*) = (void (__thiscall*)(WaterManager*, NiCamera*, ShadowSceneNode*))Hooks::RenderReflections;

@@ -23,6 +23,10 @@ public:
 	D3DXVECTOR4			CameraPosition;
 	IDirect3DSurface9*	BackBuffer;
 	D3DXVECTOR4			DepthConstants;
+	D3DXVECTOR4			DepthValidity;		// PipBoyFix: x = world depth fresh this frame, y = view model depth fresh this frame
+	UInt32				FrameCounter = 0;	// PipBoyFix: incremented once per frame after effects
+	UInt32				WorldDepthFrame = 0xFFFFFFFF;
+	UInt32				ViewModelDepthFrame = 0xFFFFFFFF;
 	RECT				SaveGameScreenShotRECT;
 	bool				IsSaveGameScreenShot;
 	bool				RESZ;

@@ -103,6 +103,7 @@ void ShaderManager::Initialize() {
 	TheShaderManager->RegisterConstant("TESR_ReciprocalResolution", &TheShaderManager->ShaderConst.ReciprocalResolution);
 	TheShaderManager->RegisterConstant("TESR_CameraForward", &TheRenderManager->CameraForward);
 	TheShaderManager->RegisterConstant("TESR_DepthConstants", &TheRenderManager->DepthConstants);
+	TheShaderManager->RegisterConstant("TESR_DepthValidity", &TheRenderManager->DepthValidity);
 	TheShaderManager->RegisterConstant("TESR_CameraData", &TheRenderManager->CameraData);
 	TheShaderManager->RegisterConstant("TESR_CameraPosition", &TheRenderManager->CameraPosition);
 	TheShaderManager->RegisterConstant("TESR_SunDirection", &TheShaderManager->ShaderConst.SunDir);
@@ -703,6 +704,19 @@ void ShaderManager::RenderEffectsPreTonemapping(IDirect3DSurface9* RenderTarget)
 	// prepare device for effects
 	Device->SetStreamSource(0, FrameVertex, 0, sizeof(FrameVS));
 	Device->SetFVF(FrameFVF);
+
+	// PipBoyFix: only trust depth snapshots that were actually refreshed this frame
+	{
+		RenderManager* RM = TheRenderManager;
+		const bool worldFresh = RM->WorldDepthFrame == RM->FrameCounter;
+		const bool viewModelFresh = RM->ViewModelDepthFrame == RM->FrameCounter;
+		RM->DepthValidity = D3DXVECTOR4(worldFresh ? 1.0f : 0.0f, viewModelFresh ? 1.0f : 0.0f, 0.0f, 0.0f);
+		static bool lastWorldFresh = true, lastViewModelFresh = true;
+		if (worldFresh != lastWorldFresh || viewModelFresh != lastViewModelFresh)
+			Logger::Log("[PipBoyFix] frame %u: world depth %s, view model depth %s, pipboy open %i", RM->FrameCounter, worldFresh ? "fresh" : "STALE", viewModelFresh ? "fresh" : "STALE", (int)GameState.PipBoyIsOn);
+		lastWorldFresh = worldFresh; lastViewModelFresh = viewModelFresh;
+		RM->FrameCounter++;
+	}
 
 	// render post process normals for use by shaders
 	RenderEffectToRT(Effects.CombineDepth->Textures.CombinedDepthSurface, Effects.CombineDepth, false);
