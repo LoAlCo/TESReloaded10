@@ -349,6 +349,23 @@ void RenderManager::ResolveDepthBuffer(IDirect3DTexture9* Buffer) {
 		if (pCurrVX) pCurrVX->Release();
 	}
 	else {
+		// The game can switch to another screen-sized depth-stencil surface at runtime (for example when the
+		// Pip-Boy is opened with real-time menu mods). Follow the bound surface instead of caching the first one,
+		// otherwise the depth copy goes stale and effects keep using an old frame.
+		IDirect3DSurface9* CurrentDepth = NULL;
+		device->GetDepthStencilSurface(&CurrentDepth);
+		if (CurrentDepth && TheTextureManager->DepthSurface && CurrentDepth != TheTextureManager->DepthSurface) {
+			D3DSURFACE_DESC CachedDesc, CurrentDesc;
+			TheTextureManager->DepthSurface->GetDesc(&CachedDesc);
+			CurrentDepth->GetDesc(&CurrentDesc);
+			if (CurrentDesc.Width == CachedDesc.Width && CurrentDesc.Height == CachedDesc.Height) {
+				TheTextureManager->DepthSurface->Release();
+				TheTextureManager->DepthSurface = NULL;
+				TheTextureManager->DepthTextureINTZ = NULL;
+			}
+		}
+		if (CurrentDepth) CurrentDepth->Release();
+
 		if (!TheTextureManager->DepthSurface) {
 			device->GetDepthStencilSurface(&TheTextureManager->DepthSurface);
             D3DSURFACE_DESC desc;
