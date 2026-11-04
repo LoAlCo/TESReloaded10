@@ -1,5 +1,7 @@
 #pragma once
 
+static UInt32 PipBoyFixRenderFrame = 0; // PipBoyFix: frame counter, incremented once per Main::Render
+
 void (__thiscall* Render)(Main*, BSRenderedTexture*, int, int) = (void (__thiscall*)(Main*, BSRenderedTexture*, int, int))Hooks::Render;
 void __fastcall RenderHook(Main* This, UInt32 edx, BSRenderedTexture* RenderedTexture, int Arg2, int Arg3) {
 	
@@ -11,6 +13,7 @@ void __fastcall RenderHook(Main* This, UInt32 edx, BSRenderedTexture* RenderedTe
 	TheRenderManager->SetupSceneCamera();
 
 	TheShaderManager->UpdateConstants();
+	PipBoyFixRenderFrame++; // PipBoyFix: one increment per game frame
 	//if (SettingsMain->Develop.TraceShaders && InterfaceManager->IsActive(Menu::MenuType::kMenuType_None) && Global->OnKeyDown(SettingsMain->Develop.TraceShaders) && DWNode::Get() == NULL) DWNode::Create();
 	(*Render)(This, RenderedTexture, Arg2, Arg3);
 
@@ -201,19 +204,25 @@ void __cdecl ProcessImageSpaceShadersHook(NiDX9Renderer* Renderer, BSRenderedTex
 		bDoneRender_LockPickMenu = false;
 	}
 	
-	if (bLiveRenderedMenu) {
-		if (!bSkippedRender_RenderedMenu) {
-			bSkippedRender_RenderedMenu = true;
-			ProcessImageSpaceShaders(Renderer, SourceTarget, DestinationTarget);
-			return;
-		}
-		else {
-			bSkippedRender_RenderedMenu = false;
-		}
+	// PipBoyFix: the original code skipped every other call while a live rendered menu was open, assuming the
+	// game calls this twice per frame (menu pass + world pass). With real-time menu mods it is called once per
+	// frame, so NVR effects only ran on every other frame and the Pip-Boy flickered. Count the calls per frame
+	// instead, and only skip the first call of a frame when the previous frame actually had two or more.
+	static UInt32 callsFrame = 0xFFFFFFFF, callsThisFrame = 0, callsLastFrame = 0;
+	if (callsFrame != PipBoyFixRenderFrame) {
+		if (callsLastFrame != callsThisFrame && bLiveRenderedMenu)
+			Logger::Log("[PipBoyFix] image space calls per frame: %u (live menu)", callsThisFrame);
+		callsLastFrame = callsThisFrame;
+		callsThisFrame = 0;
+		callsFrame = PipBoyFixRenderFrame;
 	}
-	else {
-		bSkippedRender_RenderedMenu = false;
+	callsThisFrame++;
+	if (bLiveRenderedMenu && callsLastFrame >= 2 && callsThisFrame == 1) {
+		bSkippedRender_RenderedMenu = true;
+		ProcessImageSpaceShaders(Renderer, SourceTarget, DestinationTarget);
+		return;
 	}
+	bSkippedRender_RenderedMenu = false;
 
 	IDirect3DDevice9* Device = TheRenderManager->device;
 	NiDX9RenderState* RenderState = TheRenderManager->renderState;
