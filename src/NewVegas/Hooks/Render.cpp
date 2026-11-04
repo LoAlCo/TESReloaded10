@@ -67,6 +67,25 @@ HRESULT __fastcall SetSamplerStateHook(NiDX9RenderState* This, UInt32 edx, UInt3
 
 }
 
+// PipBoyFix: dump Pip-Boy related nodes under the first person skeleton (name, culled flag, world position)
+static void PipBoyFixDumpNodes(NiAVObject* Object, int Depth) {
+	if (!Object || Depth > 40) return;
+	const char* Name = Object->m_pcName;
+	if (Name) {
+		char Lower[128]; size_t i = 0;
+		for (; Name[i] && i < sizeof(Lower) - 1; i++) Lower[i] = (char)tolower((unsigned char)Name[i]);
+		Lower[i] = 0;
+		if (strstr(Lower, "pip")) {
+			const NiPoint3& P = Object->m_worldTransform.pos;
+			Logger::Log("[PipBoyFix]   node '%s' depth %i culled %i flags %08X pos %.1f %.1f %.1f", Name, Depth, (int)(Object->m_flags & NiAVObject::APP_CULLED), Object->m_flags, P.x, P.y, P.z);
+		}
+	}
+	if (Object->m_flags & NiAVObject::IS_NODE) {
+		NiNode* Node = (NiNode*)Object;
+		for (UInt32 c = 0; c < Node->m_children.numObjs; c++) PipBoyFixDumpNodes(Node->m_children.data[c], Depth + 1);
+	}
+}
+
 void (__thiscall* RenderWorldSceneGraph)(Main*, Sun*, UInt8, UInt8, UInt8) = (void (__thiscall*)(Main*, Sun*, UInt8, UInt8, UInt8))Hooks::RenderWorldSceneGraph;
 void __fastcall RenderWorldSceneGraphHook(Main* This, UInt32 edx, Sun* SkySun, UInt8 IsFirstPerson, UInt8 WireFrame, UInt8 Arg4) {
 	(*RenderWorldSceneGraph)(This, SkySun, IsFirstPerson, WireFrame, Arg4);
@@ -82,16 +101,21 @@ void __fastcall RenderWorldSceneGraphHook(Main* This, UInt32 edx, Sun* SkySun, U
 		traceFrames = 120;
 	}
 	lastOpen = bPipBoyOpen; lastLive = bPipBoyLive;
+
+	// PipBoyFix: every ~5 seconds, and 1s/2s/4s after a Pip-Boy state change, dump the Pip-Boy nodes
+	static UInt32 dumpCounter = 0;
+	dumpCounter++;
+	if (traceFrames == 120) dumpCounter = 0;
+	if ((dumpCounter % 300 == 0 || dumpCounter == 60 || dumpCounter == 120 || dumpCounter == 240) && Player && Player->firstPersonNiNode) {
+		Logger::Log("[PipBoyFix] node dump (frame %u, open %i, firstPerson pass %i, 3rd person %i):", TheRenderManager->FrameCounter, (int)bPipBoyOpen, (int)IsFirstPerson, (int)Player->isThirdPerson);
+		PipBoyFixDumpNodes(Player->firstPersonNiNode, 0);
+	}
 	if (traceFrames > 0) {
 		Logger::Log("[PipBoyFix] frame %u WorldSceneGraph: firstPerson %i open %i live %i worldResolve %i", TheRenderManager->FrameCounter, (int)IsFirstPerson, (int)bPipBoyOpen, (int)bPipBoyLive, (int)(!bPipBoyOpen || bPipBoyLive));
 		traceFrames--;
 	}
 
-	// PipBoyFix: with real-time menus (e.g. co-op mods) the Pip-Boy counts as "live", and the game draws it
-	// as part of the world pass (IsFirstPerson == 0). Never copy that pass into the world depth buffer while
-	// the Pip-Boy is open, or it gets baked into the depth/normals used by shadows, AO and volumetric fog.
-	const bool bPipBoyInWorldPass = bPipBoyOpen && !IsFirstPerson;
-	if ((!bPipBoyOpen || bPipBoyLive) && !bPipBoyInWorldPass) {
+	if (!bPipBoyOpen || bPipBoyLive) {
 		TheRenderManager->ResolveDepthBuffer(TheTextureManager->DepthTexture); // disable updating the world buffer when pipboy is out
 		TheRenderManager->WorldDepthFrame = TheRenderManager->FrameCounter;
 	}
