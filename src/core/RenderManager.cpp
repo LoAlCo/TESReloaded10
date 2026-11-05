@@ -359,6 +359,16 @@ void RenderManager::ResolveDepthBuffer(IDirect3DTexture9* Buffer) {
 			TheTextureManager->DepthSurface->GetDesc(&CachedDesc);
 			CurrentDepth->GetDesc(&CurrentDesc);
 			if (CurrentDesc.Width == CachedDesc.Width && CurrentDesc.Height == CachedDesc.Height) {
+				// Unregister the old surface from NVAPI before letting it go: the game may free it later (real-time
+				// menus use a temporary one around the Pip-Boy), and a freed surface still registered with the driver
+				// crashes its worker thread (nvd3dum.dll).
+				if (TheTextureManager->DepthTextureINTZ) {
+					NvAPI_D3D9_UnregisterResource(TheTextureManager->DepthTextureINTZ);
+					TheTextureManager->DepthTextureINTZ->Release();	// GetContainer added a reference
+				}
+				else {
+					NvAPI_D3D9_UnregisterResource(TheTextureManager->DepthSurface);
+				}
 				TheTextureManager->DepthSurface->Release();
 				TheTextureManager->DepthSurface = NULL;
 				TheTextureManager->DepthTextureINTZ = NULL;
