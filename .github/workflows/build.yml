@@ -5,7 +5,9 @@ on: [push]
 env:
   # Path to the solution file relative to the root of the project.
   SOLUTION_FILE_PATH: .
-  ARTEFACT_NAME: NewVegasReloaded-${{github.ref_name}}
+  # Version of the Pip-Boy fix builds (bump on every change: 0.1, 0.2, ...)
+  FIX_VERSION: "0.3"
+  ARTEFACT_NAME: NewVegasReloaded-PipBoyFix-v0.3
 
 jobs:
   build:
@@ -39,5 +41,5 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: NewVegasReloaded-latest-build--${{ github.workflow_sha }}
+          name: NewVegasReloaded-PipBoyFix-v${{ env.FIX_VERSION }}
           path: ${{env.ARTEFACT_NAME}}.zip
