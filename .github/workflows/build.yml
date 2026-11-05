@@ -6,8 +6,8 @@ env:
   # Path to the solution file relative to the root of the project.
   SOLUTION_FILE_PATH: .
   # Version of the Pip-Boy fix builds (bump on every change: 0.1, 0.2, ...)
-  FIX_VERSION: "0.3"
-  ARTEFACT_NAME: NewVegasReloaded-PipBoyFix-v0.3
+  FIX_VERSION: "0.4"
+  ARTEFACT_NAME: NewVegasReloaded-PipBoyFix-v0.4
 
 jobs:
   build:

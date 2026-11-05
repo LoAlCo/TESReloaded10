@@ -1,4 +1,3 @@
-#include <vector>
 #define RESZ_CODE 0x7FA05000
 
 void RenderManager::CreateD3DMatrix(D3DMATRIX* Matrix, NiTransform* Transform) {
@@ -353,56 +352,44 @@ void RenderManager::ResolveDepthBuffer(IDirect3DTexture9* Buffer) {
 		// The game can switch to another screen-sized depth-stencil surface at runtime (for example when the
 		// Pip-Boy is opened with real-time menu mods). Follow the bound surface instead of caching the first one,
 		// otherwise the depth copy goes stale and effects keep using an old frame.
-		// Every surface followed stays referenced and registered with NVAPI while it is kept, so the driver never
-		// sees a registered surface that was freed (that crashed nvd3dum.dll); switching back to one already seen
-		// reuses it. Only the oldest are let go (unregistered first) once more than 8 have been seen.
-		struct FollowedDepth { IDirect3DSurface9* Surface; IDirect3DTexture9* INTZ; };
-		static std::vector<FollowedDepth> Followed;
 		IDirect3DSurface9* CurrentDepth = NULL;
 		device->GetDepthStencilSurface(&CurrentDepth);
-		if (CurrentDepth && CurrentDepth != TheTextureManager->DepthSurface) {
-			bool Use = !TheTextureManager->DepthSurface;
-			if (!Use) {
-				D3DSURFACE_DESC CachedDesc, CurrentDesc;
-				TheTextureManager->DepthSurface->GetDesc(&CachedDesc);
-				CurrentDepth->GetDesc(&CurrentDesc);
-				Use = CurrentDesc.Width == CachedDesc.Width && CurrentDesc.Height == CachedDesc.Height;
-			}
-			if (Use) {
-				FollowedDepth* Known = NULL;
-				for (FollowedDepth& f : Followed) if (f.Surface == CurrentDepth) Known = &f;
-				if (Known) {
-					TheTextureManager->DepthSurface = Known->Surface;
-					TheTextureManager->DepthTextureINTZ = Known->INTZ;
-					CurrentDepth->Release();	// already holding a reference to it
+		if (CurrentDepth && TheTextureManager->DepthSurface && CurrentDepth != TheTextureManager->DepthSurface) {
+			D3DSURFACE_DESC CachedDesc, CurrentDesc;
+			TheTextureManager->DepthSurface->GetDesc(&CachedDesc);
+			CurrentDepth->GetDesc(&CurrentDesc);
+			if (CurrentDesc.Width == CachedDesc.Width && CurrentDesc.Height == CachedDesc.Height) {
+				// Unregister the old surface from NVAPI before letting it go: the game may free it later (real-time
+				// menus use a temporary one around the Pip-Boy), and a freed surface still registered with the driver
+				// crashes its worker thread (nvd3dum.dll).
+				if (TheTextureManager->DepthTextureINTZ) {
+					NvAPI_D3D9_UnregisterResource(TheTextureManager->DepthTextureINTZ);
+					TheTextureManager->DepthTextureINTZ->Release();	// GetContainer added a reference
 				}
 				else {
-					FollowedDepth f = { CurrentDepth, NULL };	// keeps GetDepthStencilSurface's reference
-					D3DSURFACE_DESC desc;
-					CurrentDepth->GetDesc(&desc);
-					if (desc.Format == (D3DFORMAT)MAKEFOURCC('I', 'N', 'T', 'Z')) {
-						void* Container = NULL;
-						CurrentDepth->GetContainer(IID_IDirect3DTexture9, &Container);
-						f.INTZ = (IDirect3DTexture9*)Container;
-					}
-					if (f.INTZ) NvAPI_D3D9_RegisterResource(f.INTZ);
-					else NvAPI_D3D9_RegisterResource(f.Surface);
-					Followed.push_back(f);
-					if (Followed.size() > 8) {
-						FollowedDepth Old = Followed.front();
-						Followed.erase(Followed.begin());
-						if (Old.INTZ) { NvAPI_D3D9_UnregisterResource(Old.INTZ); Old.INTZ->Release(); }
-						else NvAPI_D3D9_UnregisterResource(Old.Surface);
-						Old.Surface->Release();
-					}
-					TheTextureManager->DepthSurface = f.Surface;
-					TheTextureManager->DepthTextureINTZ = f.INTZ;
+					NvAPI_D3D9_UnregisterResource(TheTextureManager->DepthSurface);
 				}
-				CurrentDepth = NULL;
+				TheTextureManager->DepthSurface->Release();
+				TheTextureManager->DepthSurface = NULL;
+				TheTextureManager->DepthTextureINTZ = NULL;
 			}
 		}
 		if (CurrentDepth) CurrentDepth->Release();
-		if (!TheTextureManager->DepthSurface) return;
+
+		if (!TheTextureManager->DepthSurface) {
+			device->GetDepthStencilSurface(&TheTextureManager->DepthSurface);
+            D3DSURFACE_DESC desc;
+            TheTextureManager->DepthSurface->GetDesc(&desc);
+			if (desc.Format == (D3DFORMAT)MAKEFOURCC('I', 'N', 'T', 'Z')) {
+				void* Container = NULL;
+				TheTextureManager->DepthSurface->GetContainer(IID_IDirect3DTexture9, &Container);
+				TheTextureManager->DepthTextureINTZ = (IDirect3DTexture9*)Container;
+				NvAPI_D3D9_RegisterResource(TheTextureManager->DepthTextureINTZ);
+			}
+			else {
+				NvAPI_D3D9_RegisterResource(TheTextureManager->DepthSurface);
+			}
+		}
 
 		if (TheTextureManager->DepthTextureINTZ)
 			NvAPI_D3D9_StretchRectEx(device, TheTextureManager->DepthTextureINTZ, NULL, Buffer, NULL, D3DTEXF_NONE);
